@@ -1,220 +1,586 @@
-
-
 # Stride — Full-Stack Personal Productivity OS
 
-> Інтелектуальна персональна операційна система продуктивності, яка об'єднує неструктуровані нотатки, тактичні завдання, щоденні звички та довгострокові цілі в єдиний синхронізований граф даних за допомогою LLM-пайплайна.
+> **Stride** — інтелектуальна персональна операційна система продуктивності, яка об'єднує неструктуровані нотатки, тактичні завдання, щоденні звички та довгострокові цілі в єдиний синхронізований граф даних за допомогою LLM-пайплайна.
 
 ---
 
 ## Проблема та продуктове бачення
 
-Сучасні цифрові інструменти страждають від фрагментації контексту:
-* **Нотатки** — звалище сирих думок та ідей, які не мають прямого зв'язку з діями й забуваються.
-* **Таск-менеджери** — ізольовані списки дій, позбавлені контексту походження та стратегічної мети.
-* **Трекери звичок** — відірвані від загальних цілей чеклисти без глибокої аналітики прогресу.
+Сучасні цифрові інструменти продуктивності страждають від **фрагментації контексту**:
 
-**Stride** розв'язує цю проблему через **симбіоз сутностей**: неструктурований потік думок (швидкі нотатки чи транскрипти) аналізується через конвеєр великої мовної моделі (Gemini API) і трансформується у валідовані завдання з дедлайнами та звички, прив'язані до цілей верхнього рівня.
+* **Нотатки** — сховище сирих думок та ідей, які не мають прямого зв'язку з діями й поступово забуваються.
+* **Task managers** — ізольовані списки дій, позбавлені контексту походження та стратегічної мети.
+* **Habit trackers** — відокремлені чеклісти, які не показують зв'язок між щоденною поведінкою та довгостроковими цілями.
 
----
+**Stride** розв'язує цю проблему через взаємозв'язок основних сутностей системи.
 
-## Системна архітектура
+Неструктурований потік думок — швидкі нотатки або транскрипти — проходить через LLM-пайплайн на базі **Gemini API**. Модель аналізує контекст і перетворює його на структуровані сутності: завдання, звички та цілі.
 
-Система спроєктована за принципом **MonolithFirst** у форматі **модульного розшарованого моноліту (Modular Layered Monolith)**. Це гарантує максимальну швидкість I/O в межах одного рантайму, суворі ACID-гарантії реляційної бази даних та повну відсутність мережевих затримок між сервісами.
+Таким чином, Stride створює зв'язок:
 
-### Діаграма потоку даних (System Flow)
-
-
-[ React Web Client ]  /  [ React Native Mobile Client ]
-                   │
-                   ▼  HTTP / REST (JSON + Bearer JWT)
-         [ Fastify API Gateway ]
-                   │
-      ┌────────────┼──────────────────────────┐
-      ▼            ▼                          ▼
-[ Identity ]  [ Productivity ]        [ Intelligence ]
- (Auth/JWT)   (Tasks, Habits, Goals)  (Gemini Pipeline)
-      │            │                          │
-      │            │   (Structured Output)    │
-      │            ├◄─────────────────────────┘
-      ▼            ▼
-   [ Prisma ORM / Query Engine ]
-                   │
-                   ▼
-        [ PostgreSQL Database ]
-
-### Ключові архітектурні принципи:
-
-1. **End-to-End Type Safety:** єдина мова розробки (TypeScript) та використання бібліотеки `Zod` забезпечують наскрізні контракти від запитів клієнта до збереження в базі.
-2. **Deterministic AI Extraction:** робота з LLM спирається на механізм **Structured Outputs (JSON Schema)**, що змушує модель повертати типізований масив сутностей, виключаючи синтаксичні помилки парсингу.
-3. **Layered Boundaries:** чіткий поділ обов'язків всередині модулів:
-* **Routers & Middlewares:** маршрутизація, авторизація через JWT, rate-limiting.
-* **Controllers:** HTTP-шар, валідація вхідних DTO через Zod.
-* **Services:** чиста бізнес-логіка (правила оновлення цілей, розрахунок аналітики).
-* **Repositories / Prisma:** ізольована робота з реляційною моделлю.
-
-
+**Thought → Note → Task / Habit → Goal → Analytics**
 
 ---
 
-## Технологічний стек
+# Системна архітектура
 
-| Шар системи | Технології | Призначення та переваги |
-| --- | --- | --- |
-| **Backend Runtime** | `Node.js` + `TypeScript` | Строга типізація, стабільний асинхронний Event Loop для I/O-bound навантажень. |
-| **HTTP Framework** | `Fastify` | Висока швидкість обробки запитів, низький overhead пам'яті, нативна підтримка `fastify-type-provider-zod`. |
-| **Database & ORM** | `PostgreSQL` + `Prisma` | Надійні ACID-транзакції, реляційні зв'язки, типобезпечні запити, автоматичні міграції. |
-| **AI Processing** | `@google/genai` (Gemini API) | Пряма взаємодія з моделлю через SDK, генерація задач за фіксованою схемою. |
-| **Web Frontend** | `React`, `Vite`, `Tailwind CSS` | Швидкий інтерактивний дашборд, Canvas-аналітика через `Chart.js`. |
-| **Mobile Client** | `React Native`, `Expo`, `NativeWind` | Кросплатформний мобільний клієнт для швидкої фіксації нотаток "на ходу". |
-| **State & Cache** | `Zustand`, `TanStack Query` | Легковаговий менеджмент клієнтського стану, серверне кешування без надлишкового Redux. |
-| **DevOps & QA** | `Docker`, `GitHub Actions`, `ESLint` | Контейнеризація локального оточення, автоматичний CI-пайплайн лінтингу та валідації типів. |
+Stride побудований за принципом **Monolith First** у форматі **Modular Layered Monolith**.
+
+Такий підхід дозволяє:
+
+* уникнути передчасної складності мікросервісної архітектури;
+* зберегти низьку latency між внутрішніми модулями;
+* використовувати ACID-транзакції PostgreSQL;
+* ізолювати бізнес-домен на рівні модулів;
+* мати можливість виділити окремі компоненти в сервіси в майбутньому.
+
+## System Flow
+
+Основний потік даних між клієнтами, API, бізнес-модулями, AI-пайплайном та базою даних:
+
+```mermaid
+flowchart TD
+    WEB["React Web Client"]
+    MOBILE["React Native Mobile Client"]
+
+    API["Fastify API"]
+
+    AUTH["Identity Module<br/>Auth / JWT"]
+    PROD["Productivity Module<br/>Tasks / Habits / Goals"]
+    NOTES["Notes Module"]
+    AI["Intelligence Module<br/>Gemini Pipeline"]
+
+    PRISMA["Prisma ORM"]
+    DB[("PostgreSQL")]
+
+    WEB -->|HTTP REST / JSON<br/>Bearer JWT| API
+    MOBILE -->|HTTP REST / JSON<br/>Bearer JWT| API
+
+    API --> AUTH
+    API --> PROD
+    API --> NOTES
+    API --> AI
+
+    AUTH --> PRISMA
+    PROD --> PRISMA
+    NOTES --> PRISMA
+
+    NOTES -->|Raw note| AI
+    AI -->|Structured Output| PROD
+
+    PRISMA --> DB
+```
+
+### Основний сценарій AI Pipeline
+
+```mermaid
+flowchart LR
+    INPUT["User Note<br/>Free-form text"]
+    API["Fastify API"]
+    AI["Gemini API"]
+    VALIDATE["Zod Validation"]
+    TRANSACTION["Prisma Transaction"]
+    DB[("PostgreSQL")]
+
+    INPUT --> API
+    API --> AI
+    AI -->|Structured JSON| VALIDATE
+    VALIDATE --> TRANSACTION
+    TRANSACTION --> DB
+```
+
+LLM не має прямого доступу до бази даних. Модель лише генерує структурований результат, після чого backend:
+
+1. отримує відповідь Gemini;
+2. валідовує її через Zod;
+3. перевіряє бізнес-правила;
+4. створює або оновлює сутності;
+5. виконує операції в межах атомарної транзакції PostgreSQL.
 
 ---
 
-## Реляційна модель даних (Data Schema)
+## Ключові архітектурні принципи
 
-База даних оптимізована під часті вибірки дашборду та безпеку цілісності даних:
+### 1. End-to-End Type Safety
+
+Єдина мова розробки — **TypeScript**.
+
+`Zod` використовується для runtime-валідації API-контрактів та структурованих AI-відповідей.
+
+Спільні контракти винесені в окремий workspace:
 
 ```text
-┌──────────────┐       ┌──────────────┐
-│     User     │◄──────┤     Goal     │ (Стратегічний орієнтир)
-└──────┬───────┘       └──────┬───────┘
-       │                      │
-       ├──────────────┬───────┴──────────────┐
-       ▼              ▼                      ▼
-┌──────────────┐┌──────────────┐      ┌──────────────┐
-│     Note     ││     Task     │      │    Habit     │ (Конфігурація рутини)
-└──────┬───────┘└──────────────┘      └──────┬───────┘
-       │ (sourceNoteId)                      │
-       └──────────────►                      ▼
-                                      ┌──────────────┐
-                                      │   HabitLog   │ (Append-only історія
-                                      └──────────────┘  виконання по днях)
-
+packages/contracts
 ```
 
-* **`Task`** містить складені індекси `(userId, status)` та `(userId, dueDate)` для миттєвої фільтрації на дашборді. Поле `sourceNoteId` зберігає посилання на початковий контекст, з якого була згенерована задача.
-* **`HabitLog`** фіксує щоденний факт виконання з унікальним композитним ключем `@@unique([habitId, date])`. Це дозволяє уникнути нічних скидань стану через cron та обчислювати серії (streaks) простим аналітичним запитом.
-* **`Goal`** виступає агрегатором: виконання прив'язаних завдань і звичок автоматично транслюється у відсоток досягнення мети.
+Це дозволяє використовувати однакові схеми між frontend та backend.
+
+### 2. Deterministic AI Extraction
+
+AI-пайплайн використовує **Structured Outputs / JSON Schema**, щоб модель повертала передбачувану структуру даних замість довільного тексту.
+
+LLM відповідає лише за **інтерпретацію неструктурованого вводу**.
+
+Бізнес-правила та збереження даних залишаються відповідальністю backend.
+
+### 3. Layered Boundaries
+
+Кожен модуль має чіткий поділ відповідальності:
+
+| Layer                     | Responsibility                              |
+| ------------------------- | ------------------------------------------- |
+| **Routes / Middleware**   | Routing, authentication, rate limiting      |
+| **Controllers**           | HTTP layer, request parsing, DTO validation |
+| **Services**              | Business logic and domain rules             |
+| **Repositories / Prisma** | Database access                             |
+| **Schemas**               | Runtime validation and API contracts        |
 
 ---
 
-## Реалізований та планований функціонал
+# Технологічний стек
 
-### 1. Unified Dashboard
-
-* Єдиний інтерфейс перегляду оперативного стану: завдання з найвищим пріоритетом (`Priority.URGENT`), звички на сьогодні та календарний контекст.
-* Візуалізація продуктивності через графіки активності та балансу задач (Chart.js).
-
-### 2. Task & Habit Management
-
-* Повноцінний CRUD з підтримкою пріоритетів (`LOW`, `MEDIUM`, `HIGH`, `URGENT`) та статусів.
-* Облік періодичності звичок (щоденні, специфічні дні тижня) з фіксацією логів та автоматичним підрахунком стріків.
-
-### 3. Context-Aware AI Pipeline
-
-* Поле швидкого введення вільного тексту нотатки.
-* Бекенд-пайплайн екстракції: сирий текст передається у Gemini API разом із системним промптом та схемою Zod.
-* Модель повертає детермінований список задач і цілей, які клієнт валідує і записує в базу даних за одну атомарну транзакцію.
+| Layer               | Technologies                         | Purpose                                      |
+| ------------------- | ------------------------------------ | -------------------------------------------- |
+| **Backend Runtime** | `Node.js`, `TypeScript`              | Асинхронний runtime та type safety           |
+| **HTTP Framework**  | `Fastify`                            | Lightweight HTTP API                         |
+| **Database**        | `PostgreSQL`                         | Relational data storage та ACID transactions |
+| **ORM**             | `Prisma`                             | Type-safe database access та migrations      |
+| **AI**              | `@google/genai`                      | Gemini API integration                       |
+| **Validation**      | `Zod`                                | Runtime validation та shared contracts       |
+| **Web**             | `React`, `Vite`, `Tailwind CSS`      | Web dashboard                                |
+| **Charts**          | `Chart.js`                           | Productivity analytics                       |
+| **Mobile**          | `React Native`, `Expo`, `NativeWind` | Cross-platform mobile client                 |
+| **State**           | `Zustand`                            | Client-side application state                |
+| **Server State**    | `TanStack Query`                     | API caching та synchronization               |
+| **DevOps**          | `Docker`, `GitHub Actions`           | Local infrastructure та CI                   |
+| **Code Quality**    | `ESLint`                             | Static analysis                              |
 
 ---
 
-## Структура проєкту (Monorepo Layout)
+# Реляційна модель даних
 
-Проєкт організовано як легковаговий монорепозиторій:
+```mermaid
+erDiagram
+    USER ||--o{ GOAL : owns
+    USER ||--o{ NOTE : creates
+    USER ||--o{ TASK : owns
+    USER ||--o{ HABIT : owns
 
+    GOAL ||--o{ TASK : contains
+    GOAL ||--o{ HABIT : contains
 
+    NOTE ||--o{ TASK : generates
+
+    HABIT ||--o{ HABIT_LOG : has
+
+    USER {
+        uuid id
+        string email
+        string passwordHash
+        datetime createdAt
+    }
+
+    GOAL {
+        uuid id
+        uuid userId
+        string title
+        string description
+        datetime createdAt
+    }
+
+    NOTE {
+        uuid id
+        uuid userId
+        string content
+        datetime createdAt
+    }
+
+    TASK {
+        uuid id
+        uuid userId
+        uuid goalId
+        uuid sourceNoteId
+        string title
+        string status
+        string priority
+        datetime dueDate
+    }
+
+    HABIT {
+        uuid id
+        uuid userId
+        uuid goalId
+        string name
+        string frequency
+    }
+
+    HABIT_LOG {
+        uuid habitId
+        date date
+        boolean completed
+    }
+```
+
+### Основні моделі
+
+#### `Task`
+
+Містить складені індекси:
+
+```text
+(userId, status)
+(userId, dueDate)
+```
+
+Вони оптимізують типові dashboard-запити — фільтрацію завдань за статусом та дедлайном.
+
+`sourceNoteId` зберігає зв'язок із початковою нотаткою, з якої могла бути згенерована задача.
+
+#### `HabitLog`
+
+`HabitLog` зберігає факт виконання звички за конкретну дату.
+
+Унікальність забезпечується композитним ключем:
+
+```prisma
+@@unique([habitId, date])
+```
+
+Тому немає необхідності щодня скидати стан звички через cron.
+
+Історія виконання зберігається як окремі записи, що дозволяє розраховувати:
+
+* streaks;
+* completion rate;
+* consistency;
+* productivity trends.
+
+#### `Goal`
+
+`Goal` виступає стратегічним рівнем системи.
+
+Завдання та звички можуть бути прив'язані до конкретної цілі, що дозволяє будувати зв'язок між щоденними діями та довгостроковими результатами.
+
+---
+
+# Реалізований та планований функціонал
+
+## 1. Unified Dashboard
+
+Єдиний інтерфейс для перегляду поточного стану продуктивності:
+
+* пріоритетні завдання;
+* завдання на сьогодні;
+* звички;
+* календарний контекст;
+* статистика виконання;
+* productivity charts.
+
+Візуалізація виконується за допомогою `Chart.js`.
+
+---
+
+## 2. Task & Habit Management
+
+### Tasks
+
+Повноцінний CRUD:
+
+* створення;
+* редагування;
+* видалення;
+* зміна статусу;
+* дедлайни;
+* пріоритети.
+
+Підтримувані пріоритети:
+
+```text
+LOW
+MEDIUM
+HIGH
+URGENT
+```
+
+### Habits
+
+Підтримуються:
+
+* щоденні звички;
+* звички за конкретними днями тижня;
+* історія виконання;
+* streak calculation;
+* completion analytics.
+
+---
+
+## 3. Context-Aware AI Pipeline
+
+Користувач вводить довільний текст у поле швидкої нотатки.
+
+Наприклад:
+
+```text
+I need to prepare for the backend exam next Friday
+and start exercising three times a week.
+```
+
+Stride передає текст до Gemini разом із системним prompt та структурованою схемою.
+
+AI може перетворити його на структурований результат:
+
+```text
+Note
+ ├── Task
+ │    └── Prepare for backend exam
+ │
+ └── Habit
+      └── Exercise 3 times per week
+```
+
+Після цього backend:
+
+```text
+Gemini
+   ↓
+Structured Output
+   ↓
+Zod Validation
+   ↓
+Business Rules
+   ↓
+Prisma Transaction
+   ↓
+PostgreSQL
+```
+
+Усі зміни виконуються атомарно.
+
+---
+
+# Структура проєкту
+
+Stride організований як **pnpm monorepo**.
+
+```text
 stride/
 ├── apps/
-│   ├── web/                # React + Vite веб-дашборд
-│   ├── mobile/             # React Native / Expo застосунок
-│   └── api/                # Fastify + Prisma бекенд-сервіс
-│       ├── src/
-│       │   ├── modules/
-│       │   │   ├── auth/           # Маршрути, контролери та JWT-логіка
-│       │   │   ├── productivity/   # Tasks, Habits, Goals сервіси
-│       │   │   ├── notes/          # Збереження та управління нотатками
-│       │   │   └── ai/             # Gemini SDK інтеграція та промпти
-│       │   └── shared/             # База даних, Prisma клієнт, помилки
+│   ├── web/
+│   │   └── # React + Vite web dashboard
+│   │
+│   ├── mobile/
+│   │   └── # React Native + Expo mobile client
+│   │
+│   └── api/
+│       ├── prisma/
+│       │   ├── schema.prisma
+│       │   └── migrations/
+│       │
+│       └── src/
+│           ├── modules/
+│           │   ├── auth/
+│           │   │   ├── routes/
+│           │   │   ├── controllers/
+│           │   │   ├── services/
+│           │   │   └── schemas/
+│           │   │
+│           │   ├── productivity/
+│           │   │   ├── tasks/
+│           │   │   ├── habits/
+│           │   │   └── goals/
+│           │   │
+│           │   ├── notes/
+│           │   │   ├── routes/
+│           │   │   ├── controllers/
+│           │   │   └── services/
+│           │   │
+│           │   └── ai/
+│           │       ├── gemini/
+│           │       ├── prompts/
+│           │       ├── schemas/
+│           │       └── services/
+│           │
+│           └── shared/
+│               ├── db/
+│               ├── errors/
+│               ├── middleware/
+│               └── utils/
+│
 ├── packages/
-│   └── contracts/          # Спільні Zod-схеми, DTO та TypeScript-типи
-├── docker-compose.yml      # Локальна інфраструктура (PostgreSQL)
+│   └── contracts/
+│       ├── schemas/
+│       └── types/
+│
+├── docker-compose.yml
 ├── package.json
+├── pnpm-workspace.yaml
 └── turbo.json
+```
+
+### Архітектурний принцип
+
+Структура розділена за двома рівнями:
+
+```text
+apps/
+    → deployable applications
+
+packages/
+    → shared libraries and contracts
+```
+
+Backend додатково організований за **domain modules**, а не за глобальними папками типу:
+
+```text
+controllers/
+services/
+repositories/
+```
+
+Це дозволяє зберігати пов'язану бізнес-логіку поруч:
+
+```text
+productivity/
+├── tasks/
+├── habits/
+└── goals/
+```
+
+замість розподілення її по всьому проєкту.
 
 ---
 
-## Швидкий старт для розробки
+# Швидкий старт
 
-### Передумови
+## Передумови
 
-* Node.js >= 20.x
-* pnpm >= 9.x
-* Docker & Docker Compose
+* Node.js `>= 20.x`
+* pnpm `>= 9.x`
+* Docker
+* Docker Compose
 
-### Кроки запуску системи
+## 1. Клонування та встановлення
 
-1. **Клонувати репозиторій та встановити залежності:**
 ```bash
-git clone [https://github.com/your-username/stride.git](https://github.com/your-username/stride.git)
-cd stride
-pnpm install
+git clone https://github.com/your-username/stride.git
 
+cd stride
+
+pnpm install
 ```
 
+## 2. Запуск PostgreSQL
 
-2. **Запустити інфраструктуру бази даних:**
 ```bash
 docker compose up -d postgres
-
 ```
 
+## 3. Environment variables
 
-3. **Налаштувати змінні середовища:**
-Створіть `.env` у корені та в `apps/api/`:
+Створіть `.env` у `apps/api/`:
+
 ```env
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/stride_db?schema=public"
-JWT_SECRET="your-super-secret-key"
-GEMINI_API_KEY="your-google-gemini-api-key"
-PORT=3001
 
+JWT_SECRET="your-super-secret-key"
+
+GEMINI_API_KEY="your-google-gemini-api-key"
+
+PORT=3001
 ```
 
+## 4. Prisma migrations
 
-4. **Застосувати міграції Prisma:**
 ```bash
 pnpm --filter api prisma migrate dev
-
 ```
 
+## 5. Запуск development environment
 
-5. **Запустити всі сервіси в режимі розробки:**
 ```bash
 pnpm dev
-
 ```
 
+Після запуску:
 
-* **Web Client:** `http://localhost:5173`
-* **Fastify API:** `http://localhost:3001`
-* **API Docs (Swagger):** `http://localhost:3001/documentation`
+```text
+Web Client
+http://localhost:5173
 
+Fastify API
+http://localhost:3001
 
-
----
-
-## Подальший розвиток та масштабування
-
-1. **Асинхронний конвеєр (BullMQ + Redis):** переведення обробки важких AI-запитів у фонові воркери для запобігання мережевим таймаутам на мобільних клієнтах та стабільного дотримання Rate Limits.
-2. **Offline-First Synchronization:** впровадження локального сховища (MMKV) на мобільному клієнті для миттєвого відображення інтерфейсу (0 ms latency) з фоновою дельта-синхронізацією за полем `updatedAt`.
-3. **Advanced AI Features:** автоматичне виявлення когнітивного перевантаження на основі динаміки невиконаних завдань і пропозиція перегляду розкладу.
+Swagger / API Docs
+http://localhost:3001/documentation
+```
 
 ---
 
-## Ліцензія
+# Подальший розвиток
+
+## 1. Asynchronous AI Processing
+
+Важкі AI-запити можуть бути винесені у background workers:
+
+```text
+API
+ ↓
+Redis / BullMQ
+ ↓
+AI Worker
+ ↓
+Gemini
+ ↓
+PostgreSQL
+```
+
+Це дозволить:
+
+* уникнути довгих HTTP-запитів;
+* краще працювати з rate limits;
+* повторювати failed jobs;
+* масштабувати AI processing незалежно від API.
+
+---
+
+## 2. Offline-First Synchronization
+
+Mobile client може використовувати локальне сховище для миттєвого UI:
+
+```text
+Mobile UI
+   ↓
+Local Storage
+   ↓
+Background Sync
+   ↓
+Fastify API
+   ↓
+PostgreSQL
+```
+
+Для синхронізації можуть використовуватися:
+
+* `updatedAt`;
+* versioning;
+* optimistic updates;
+* delta synchronization.
+
+---
+
+## 3. Advanced AI Features
+
+Подальший розвиток AI-рівня може включати:
+
+* виявлення когнітивного перевантаження;
+* аналіз накопичених невиконаних завдань;
+* автоматичне визначення пріоритетів;
+* рекомендації щодо перенесення дедлайнів;
+* аналіз productivity patterns;
+* персональні рекомендації щодо розподілу навантаження.
+
+---
+
+# Ліцензія
 
 Проєкт розробляється в межах курсової роботи кафедри комп'ютерних наук ЧНУ.
-
-```
-
-```
